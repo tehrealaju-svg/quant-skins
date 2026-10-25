@@ -348,7 +348,7 @@ async function admin(tab = "orders") {
   await ({ orders: adminOrders, list: adminList, settings: adminSettings }[tab] || adminOrders)($("#pane"));
 }
 async function adminOrders(el) {
-  await sb.rpc("skin_expire_orders").catch(() => {});
+  await sb.rpc("skin_expire_orders"); // Supabase builders are thenables without .catch; errors come back in the result
   const list = must(await sb.from("skin_orders").select("*, skin_profiles(name, steam_id, trade_url, qnt_address)").not("status", "in", "(done,cancelled)").order("created_at"));
   el.innerHTML = `<p class="muted">${list.length} open orders. This page beeps and notifies you when an order arrives or gets paid — keep it open.</p>` +
     list.map((o) => `<div class="card stack" style="margin-bottom:12px"><div class="row between wrap"><b>#${o.id} · ${o.kind} · ${esc(o.skin_profiles?.name)}</b><span class="status ${o.status}">${STATUS[o.status]}</span></div>
