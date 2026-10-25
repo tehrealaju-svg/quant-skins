@@ -9,7 +9,26 @@ Deno.serve(async (req) => {
     if (!me) return json({ error: "Sign in first" }, 401);
     const db = admin();
     const { data: s } = await db.from("skin_settings").select("*").single();
-    const bot = new URL(req.url).searchParams.get("bot") === "1";
+    const params = new URL(req.url).searchParams;
+    // Admin: look up a skin's image by market name (for listing trade-protected items by hand,
+    // which Steam hides from the public inventory).
+    const lookup = params.get("lookup");
+    if (lookup) {
+      if (!me.is_admin) return json({ error: "Admins only" }, 403);
+      const r = await fetch(`https://steamcommunity.com/market/search/render/?appid=730&norender=1&count=10&query=${encodeURIComponent(lookup)}`,
+        { headers: { "User-Agent": "Mozilla/5.0 QuantSkins" } });
+      const j = await r.json().catch(() => null);
+      const hit = (j?.results || []).find((x: any) => x.hash_name === lookup);
+      const a: any = hit?.asset_description;
+      if (!a) return json({ error: "Steam doesn't know that name. Use the exact market name, e.g. AK-47 | Redline (Field-Tested)" }, 404);
+      const m = lookup.match(/^(.*) \((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)$/);
+      const W: Record<string, string> = { "Factory New": "FN", "Minimal Wear": "MW", "Field-Tested": "FT", "Well-Worn": "WW", "Battle-Scarred": "BS" };
+      const item = m ? m[1] : lookup;
+      await fetchPrices(db, item).catch(() => []);
+      return json({ name: lookup, item, wear: m ? W[m[2]] : "", image: `https://community.cloudflare.steamstatic.com/economy/image/${a.icon_url}/256fx256f`,
+        rarity_color: a.name_color ? "#" + a.name_color : "" });
+    }
+    const bot = params.get("bot") === "1";
     if (bot && !me.is_admin) return json({ error: "Admins only" }, 403);
     const steamId = bot ? s.bot_steam_id : me.steam_id;
     if (!steamId) return json({ error: "Set the shop Steam ID in admin settings first" }, 400);
