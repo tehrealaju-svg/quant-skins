@@ -3,6 +3,8 @@
 -- 8 days after delivery (Steam's trade-reversal window has passed) the shop pays the seller.
 -- If the seller reverses the trade, the buyer is refunded and the seller is banned.
 
+alter table public.skin_items   add column if not exists qnt_price numeric check (qnt_price is null or qnt_price > 0);  -- from 003, so 004 runs alone
+alter table public.skin_items   add column if not exists tradable_after timestamptz;  -- from 002
 alter table public.skin_items   add column if not exists seller_id uuid references public.skin_profiles on delete cascade;
 alter table public.skin_profiles add column if not exists banned_until timestamptz;
 alter table public.skin_profiles add column if not exists ban_reason text not null default '';

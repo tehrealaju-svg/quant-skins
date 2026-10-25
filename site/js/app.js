@@ -259,7 +259,7 @@ async function orderView(id) {
   const o = must(await sb.from("skin_orders").select("*").eq("id", id).single());
   const list = (items, label) => items.length ? `<h3>${label}</h3><ul class="list">${items.map((i) => `<li><img src="${esc(i.image)}" alt="" style="width:64px;height:48px;object-fit:contain">
     <div class="grow"><b>${esc(i.name)}</b>${i.float ? `<div class="faint">Float ${(+i.float).toFixed(6)}</div>` : ""}</div><div class="r">${qnt(i.qnt)} QNT</div></li>`).join("")}</ul>` : "";
-  view.innerHTML = `<div style="max-width:720px" class="stack">
+  view.innerHTML = `<div style="max-width:720px;margin:0 auto" class="stack">
     <div class="row between wrap"><h1>Order #${o.id}</h1><span class="status ${o.status}">${STATUS[o.status]}</span></div>
     <div class="card">${list(o.shop_items, "You get")}${list(o.user_items, "You give")}
       <div class="row between" style="margin-top:12px"><span class="muted">${o.qnt_due > 0 ? "You pay" : o.qnt_due < 0 ? "You receive" : "Even trade"}</span><span class="big-total">${qnt(Math.abs(o.qnt_due))} QNT</span></div></div>
@@ -393,7 +393,7 @@ async function checkPayment(o, txid, btn, poll) {
 // ---------------------------------------------------------------- account
 async function account() {
   if (!needLogin()) return;
-  view.innerHTML = `<div style="max-width:560px" class="stack"><div class="row"><img class="avatar" style="width:56px;height:56px" src="${esc(me.avatar)}" alt=""><div><h1 style="margin:0">${esc(me.name)}</h1><span class="faint mono">${esc(me.steam_id)}</span></div></div>
+  view.innerHTML = `<div style="max-width:560px;margin:0 auto" class="stack"><div class="row"><img class="avatar" style="width:56px;height:56px" src="${esc(me.avatar)}" alt=""><div><h1 style="margin:0">${esc(me.name)}</h1><span class="faint mono">${esc(me.steam_id)}</span></div></div>
     <div class="card stack">
       <div><label class="f">Steam trade URL</label><input class="in mono" id="tu" value="${esc(me.trade_url)}" placeholder="https://steamcommunity.com/tradeoffer/new/?partner=…&token=…">
         <a href="https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url" target="_blank" rel="noopener" style="font-size:13px">Find my trade URL</a></div>
@@ -564,7 +564,7 @@ async function adminList(el) {
 }
 async function adminSettings(el) {
   const s = settings;
-  el.innerHTML = `<div class="card stack" style="max-width:600px">
+  el.innerHTML = `<div class="card stack" style="max-width:600px;margin:0 auto">
     <div><label class="f">USD per 1 QNT</label><input class="in" id="r" value="${s.usd_per_qnt}"></div>
     <div><label class="f">Low-float premium (0.30 = best float in a wear costs up to 30% more)</label><input class="in" id="p" value="${s.float_premium}"></div>
     <div><label class="f">We pay users (0.90 = 90% of price)</label><input class="in" id="sr" value="${s.sell_ratio}"></div>

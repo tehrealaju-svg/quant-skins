@@ -54,7 +54,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
 }
-.top-in { max-width: 1120px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 18px; }
+.top-in { max-width: clamp(1120px, 92vw, 1600px); margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 18px; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; color: var(--text); }
 .logo-mark { width: 28px; height: 28px; border-radius: 50%; background: var(--brand); display: grid; place-items: center; color: #fff; font-size: 15px; font-weight: 800; }
 .nav { display: flex; gap: 4px; margin-left: 8px; }
@@ -80,7 +80,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* ---------- layout */
-main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+main { max-width: clamp(1120px, 92vw, 1600px); margin: 0 auto; padding: 24px 16px 48px; }
 .grid { display: grid; gap: 16px; }
 .cols-2 { grid-template-columns: 1.4fr 1fr; }
 @media (max-width: 900px) { .cols-2 { grid-template-columns: 1fr; } }
@@ -178,7 +178,7 @@ table.t .num { text-align: right; font-variant-numeric: tabular-nums; }
 .modal { background: var(--card); border-radius: var(--radius); padding: 22px; width: 100%; max-width: 440px; max-height: 90vh; overflow: auto; }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.foot { max-width: 1120px; margin: 0 auto; padding: 24px 16px 40px; color: var(--faint); font-size: 13px; display: flex; gap: 16px; flex-wrap: wrap; }
+.foot { max-width: clamp(1120px, 92vw, 1600px); margin: 0 auto; padding: 24px 16px 40px; color: var(--faint); font-size: 13px; display: flex; gap: 16px; flex-wrap: wrap; }
 .foot a { color: var(--faint); }
 .list .r { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .balance-big { font-size: 32px; } .card { padding: 16px; } }
