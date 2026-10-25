@@ -52,6 +52,14 @@ function floatBar(f) {
   return `<div class="fwrap"><div class="fbar"><i class="fn"></i><i class="mw"></i><i class="ft"></i><i class="ww"></i><i class="bs"></i></div>
     <span class="mk" style="left:calc(${pct}% - 1px)"></span></div><div class="wr">Float ${(+f).toFixed(6)}</div>`;
 }
+// Admin price input -> number of QNT, or null for "use the market value".
+function priceOf(v) {
+  v = String(v ?? "").trim();
+  if (!v) return null;
+  if (!(+v > 0)) throw new Error("Price must be a positive number of QNT");
+  return +v;
+}
+
 // "Tradable in 3d 4h" for skins that are still trade-protected; ticks every minute.
 function countdown(t) {
   const ms = new Date(t) - Date.now();
@@ -69,6 +77,8 @@ function skinCard(s, { selected, off, price } = {}) {
     ${floatBar(s.float_value ?? s.float)}
     ${s.tradable_after && new Date(s.tradable_after) > Date.now() ? `<span class="pill lock" data-until="${esc(s.tradable_after)}">🔒 ${countdown(s.tradable_after)}</span>` : ""}
     <div class="pr">${price ?? (s.qnt === null ? `<span class="faint">No price yet</span>` : `${qnt(s.qnt)} QNT <small>${usd(s.usd)}</small>`)}</div>
+    ${s.deal_pct !== null && s.deal_pct !== undefined ? `<div class="deal ${s.deal_pct >= 0 ? "good" : "bad"}">${s.deal_pct >= 0 ? `${s.deal_pct}% below value` : `${-s.deal_pct}% above value`}
+      <span class="faint">· value ${qnt(s.value_qnt)}</span></div>` : ""}
   </div>`;
 }
 
@@ -399,21 +409,45 @@ async function adminOrders(el) {
 }
 async function adminList(el) {
   el.innerHTML = `<div class="row muted"><span class="spinner"></span>Loading the shop account's Steam inventory…</div>`;
-  const inv = await fn("inventory", null, "?bot=1");
+  let inv = { items: [] }, invErr = "";
+  try { inv = await fn("inventory", null, "?bot=1"); } catch (e) { invErr = e.message; }
   el.innerHTML = `<p class="muted">Set the float (from the in-game inspect or CSFloat), then list. Price = csgoskins.gg price for that wear + up to ${Math.round(settings.float_premium * 100)}% for a low float.
       Not tradable yet? Set "Tradable after" and buyers see a countdown.</p>
     <div class="card stack" style="margin-bottom:16px"><h3 style="margin:0">Add a trade-protected skin by hand</h3>
       <p class="faint" style="margin:0;font-size:13px">Steam hides trade-protected items from public inventories. Type the exact market name, e.g. <i>AK-47 | Redline (Field-Tested)</i>.</p>
       <div class="row wrap"><input class="in" id="mn" placeholder="Market name" style="flex:2 1 260px"><input class="in" id="mf" placeholder="Float" inputmode="decimal" style="flex:1 1 100px">
+        <input class="in" id="mp" placeholder="Your price (QNT)" inputmode="decimal" style="flex:1 1 120px">
         <input class="in" id="mt" type="datetime-local" style="flex:1 1 200px" title="Tradable after"><button class="btn" id="madd">Add</button></div></div>
+    ${invErr ? `<div class="notice err">${esc(invErr)}</div>` : !inv.items.length ? `<div class="notice warn">The shop account's inventory looks empty. Make sure it's set to Public in Steam privacy settings.</div>` : ""}
     <div class="skins">${inv.items.map((i) => `<div class="skin ${i.listed ? "off" : ""}" style="--rarity:${esc(i.rarity_color)};cursor:default">
       <img src="${esc(i.image)}" alt=""><div class="nm">${esc(i.name)}</div>
       <div class="wr">${i.usd ? usd(i.usd) + " base" : "no price"}</div>
       ${i.listed ? `<span class="pill">Listed</span>` : `<input class="in" placeholder="Float e.g. 0.1834" data-f="${i.asset_id}" inputmode="decimal">
+        <input class="in" placeholder="Your price (QNT), blank = market" data-p="${i.asset_id}" inputmode="decimal">
         <label class="faint" style="font-size:12px">Tradable after (optional)<input class="in" type="datetime-local" data-t="${i.asset_id}"></label>
         ${i.inspect_link ? `<a href="${esc(i.inspect_link)}" style="font-size:12px">Inspect in CS2</a>` : ""}
         <button class="btn sm" data-l="${i.asset_id}">List</button>`}</div>`).join("")}</div>`;
   const when = (v) => (v ? new Date(v).toISOString() : null);
+  // Listed skins: change your price or take them off sale.
+  const listed = must(await sb.from("skin_market").select("*").in("status", ["available", "reserved", "hidden"]).order("listed_at", { ascending: false }));
+  el.insertAdjacentHTML("afterbegin", `<div class="card" style="margin-bottom:16px"><h3>Listed (${listed.length})</h3>
+    <div class="table-scroll"><table class="t"><thead><tr><th>Skin</th><th class="num">Value</th><th class="num">Your price (QNT)</th><th class="num">Deal</th><th></th></tr></thead><tbody>
+    ${listed.map((i) => `<tr><td><div class="row"><img src="${esc(i.image)}" alt="" style="width:48px;height:36px;object-fit:contain"><div>${esc(i.name)}
+        <div class="faint" style="font-size:12px">${i.float_value ? "Float " + (+i.float_value).toFixed(6) : ""} ${i.status !== "available" ? "· " + i.status : ""}</div></div></div></td>
+      <td class="num">${qnt(i.value_qnt)} QNT</td>
+      <td class="num"><input class="in" style="width:120px;min-height:36px;padding:6px 10px" data-ep="${i.id}" value="${i.qnt ?? ""}" inputmode="decimal"></td>
+      <td class="num ${i.deal_pct >= 0 ? "up" : "down"}">${i.deal_pct === null ? "market" : (i.deal_pct >= 0 ? "-" : "+") + Math.abs(i.deal_pct) + "%"}</td>
+      <td><button class="btn ghost sm" data-es="${i.id}">Save</button> <button class="btn line sm" data-eh="${i.id}">${i.status === "hidden" ? "Show" : "Hide"}</button></td></tr>`).join("")}
+    </tbody></table></div></div>`);
+  $$("[data-es]", el).forEach((b) => (b.onclick = async () => {
+    try { must(await sb.from("skin_items").update({ qnt_price: priceOf($(`[data-ep="${b.dataset.es}"]`, el).value) }).eq("id", b.dataset.es)); toast("Price saved"); route(); }
+    catch (e) { toast(e.message); }
+  }));
+  $$("[data-eh]", el).forEach((b) => (b.onclick = async () => {
+    const it = listed.find((x) => String(x.id) === b.dataset.eh);
+    try { must(await sb.from("skin_items").update({ status: it.status === "hidden" ? "available" : "hidden" }).eq("id", it.id)); route(); }
+    catch (e) { toast(e.message); }
+  }));
   $("#madd", el).onclick = async (e) => {
     try {
       const name = $("#mn", el).value.trim(), f = $("#mf", el).value.trim();
@@ -422,7 +456,7 @@ async function adminList(el) {
       busy(e.target, true);
       const info = await fn("inventory", null, "?lookup=" + encodeURIComponent(name));
       must(await sb.from("skin_items").insert({ name: info.name, item: info.item, wear: info.wear, float_value: f ? +f : null,
-        image: info.image, rarity_color: info.rarity_color, tradable_after: when($("#mt", el).value) }));
+        image: info.image, rarity_color: info.rarity_color, tradable_after: when($("#mt", el).value), qnt_price: priceOf($("#mp", el).value) }));
       busy(e.target, false); toast("Listed ✓"); $("#mn", el).value = ""; $("#mf", el).value = "";
     } catch (err) { busy(e.target, false); toast(err.message, 5000); }
   };
@@ -432,7 +466,8 @@ async function adminList(el) {
     try {
       if (f && !(+f >= 0 && +f <= 1)) throw new Error("Float must be between 0 and 1");
       must(await sb.from("skin_items").insert({ asset_id: i.asset_id, name: i.name, item: i.item, wear: i.wear, float_value: f ? +f : null,
-        image: i.image, rarity_color: i.rarity_color, inspect_link: i.inspect_link, tradable_after: when($(`[data-t="${i.asset_id}"]`, el).value) }));
+        image: i.image, rarity_color: i.rarity_color, inspect_link: i.inspect_link, tradable_after: when($(`[data-t="${i.asset_id}"]`, el).value),
+        qnt_price: priceOf($(`[data-p="${i.asset_id}"]`, el).value) }));
       toast("Listed ✓"); b.closest(".skin").classList.add("off"); b.replaceWith(Object.assign(document.createElement("span"), { className: "pill", textContent: "Listed" }));
     } catch (e) { toast(e.message); }
   }));

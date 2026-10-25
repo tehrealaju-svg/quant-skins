@@ -51,3 +51,4 @@
 .thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .thumbs img { width: 56px; height: 42px; object-fit: contain; background: var(--surface); border-radius: 6px; }
 .pill.lock { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); align-self: flex-start; }
+.deal { font-size: 12px; font-weight: 700; } .deal.good { color: var(--up); } .deal.bad { color: var(--down); }
