@@ -32,6 +32,7 @@ const WEARNAME = { FN: "Factory New", MW: "Minimal Wear", FT: "Field-Tested", WW
 const STATUS = {
   awaiting_payment: "Waiting for your payment", awaiting_skins: "Send your skins", paid: "Paid — trade coming",
   trade_sent: "Trade offer sent", done: "Done", cancelled: "Cancelled",
+  in_escrow: "Delivered — 8-day hold", reversed: "Reported reversed", refunded: "Refunded",
 };
 async function fn(name, body, qs = "") {
   const { data: s } = await sb.auth.getSession();
@@ -76,6 +77,7 @@ function skinCard(s, { selected, off, price } = {}) {
     <div class="wr">${esc(WEARNAME[s.wear] || "")}</div>
     ${floatBar(s.float_value ?? s.float)}
     ${s.tradable_after && new Date(s.tradable_after) > Date.now() ? `<span class="pill lock" data-until="${esc(s.tradable_after)}">🔒 ${countdown(s.tradable_after)}</span>` : ""}
+    <div class="faint" style="font-size:12px">${s.seller_name ? "by " + esc(s.seller_name) : s.id !== undefined && s.asset_id === undefined ? "Quant Skins shop" : ""}</div>
     <div class="pr">${price ?? (s.qnt === null ? `<span class="faint">No price yet</span>` : `${qnt(s.qnt)} QNT <small>${usd(s.usd)}</small>`)}</div>
     ${s.deal_pct !== null && s.deal_pct !== undefined ? `<div class="deal ${s.deal_pct >= 0 ? "good" : "bad"}">${s.deal_pct >= 0 ? `${s.deal_pct}% below value` : `${-s.deal_pct}% above value`}
       <span class="faint">· value ${qnt(s.value_qnt)}</span></div>` : ""}
@@ -105,7 +107,7 @@ const needLogin = () => {
 };
 
 // ---------------------------------------------------------------- router
-const routes = { "": market, trade, orders, order: orderView, account, admin, auth, "login-failed": loginFailed };
+const routes = { "": market, trade, sell, orders, order: orderView, account, admin, auth, "login-failed": loginFailed };
 async function route() {
   const [name, arg] = location.hash.replace(/^#\/?/, "").split("/");
   $$("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === (name || "home")));
@@ -205,12 +207,50 @@ async function trade() {
   drawMine();
 }
 
+// ---------------------------------------------------------------- sell your own skins
+async function sell() {
+  if (!needLogin()) return;
+  if (me.banned_until && new Date(me.banned_until) > Date.now()) throw new Error("Your account is banned: " + (me.ban_reason || ""));
+  const listed = must(await sb.from("skin_market").select("*").eq("seller_id", me.id).in("status", ["available", "reserved", "hidden"]).order("listed_at", { ascending: false }));
+  view.innerHTML = `<div class="page-head"><div><h1>Sell your skins</h1><span class="muted">Set your price in QNT. Buyers pay into escrow; you send the skin on Steam, and you're paid 8 days after they receive it.</span></div></div>
+    ${!me.qnt_address || !me.trade_url ? `<div class="notice warn" style="margin-bottom:16px">Add your Steam trade URL and QNT address in <a href="#/account">Account</a> first — that's where you get paid.</div>` : ""}
+    <div class="card" style="margin-bottom:16px"><h2>Your listings (${listed.length})</h2>
+      ${listed.length ? `<div class="table-scroll"><table class="t"><thead><tr><th>Skin</th><th class="num">Value</th><th class="num">Your price (QNT)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${listed.map((i) => `<tr><td><div class="row"><img src="${esc(i.image)}" alt="" style="width:48px;height:36px;object-fit:contain">${esc(i.name)}</div></td>
+        <td class="num">${qnt(i.value_qnt)}</td><td class="num">${i.status === "reserved" ? qnt(i.qnt) : `<input class="in" style="width:110px;min-height:34px;padding:6px 10px" data-p="${i.id}" value="${i.qnt}">`}</td>
+        <td>${i.status === "reserved" ? `<span class="status paid">in an order</span>` : esc(i.status)}</td>
+        <td>${i.status === "reserved" ? "" : `<button class="btn ghost sm" data-s="${i.id}">Save</button> <button class="btn line sm" data-h="${i.id}">${i.status === "hidden" ? "Show" : "Hide"}</button> <button class="btn line sm" data-d="${i.id}">Remove</button>`}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="muted">Nothing listed yet.</p>`}</div>
+    <div class="card"><h2>Your Steam inventory</h2><div id="inv"><div class="row muted"><span class="spinner"></span>Loading your Steam inventory…</div></div></div>`;
+  $$("[data-s]").forEach((b) => (b.onclick = async () => { try { must(await sb.from("skin_items").update({ qnt_price: priceOf($(`[data-p="${b.dataset.s}"]`).value) }).eq("id", b.dataset.s)); toast("Price saved"); route(); } catch (e) { toast(e.message); } }));
+  $$("[data-h]").forEach((b) => (b.onclick = async () => { const it = listed.find((x) => String(x.id) === b.dataset.h); try { must(await sb.from("skin_items").update({ status: it.status === "hidden" ? "available" : "hidden" }).eq("id", it.id)); route(); } catch (e) { toast(e.message); } }));
+  $$("[data-d]").forEach((b) => (b.onclick = async () => { try { must(await sb.from("skin_items").delete().eq("id", b.dataset.d)); route(); } catch (e) { toast(e.message); } }));
+  let inv;
+  try { inv = (await fn("inventory")).items; } catch (e) { $("#inv").innerHTML = `<div class="notice err">${esc(e.message)}</div>`; return; }
+  const taken = new Set(listed.map((i) => i.inspect_link).filter(Boolean));
+  $("#inv").innerHTML = `<div class="skins">${inv.filter((i) => !taken.has(i.inspect_link)).map((i) => `<div class="skin" style="--rarity:${esc(i.rarity_color)};cursor:default">
+      <img src="${esc(i.image)}" alt=""><div class="nm">${esc(i.item)}</div><div class="wr">${esc(WEARNAME[i.wear] || "")}${i.usd ? " · value " + qnt(i.usd / settings.usd_per_qnt) + " QNT" : ""}</div>
+      <input class="in" placeholder="Float (optional)" data-f="${i.asset_id}" inputmode="decimal">
+      <input class="in" placeholder="Your price in QNT" data-q="${i.asset_id}" inputmode="decimal" value="${i.usd ? (i.usd / settings.usd_per_qnt).toFixed(2) : ""}">
+      <button class="btn sm" data-l="${i.asset_id}">List for sale</button></div>`).join("") || `<p class="muted">No tradable CS2 skins.</p>`}</div>`;
+  $$("[data-l]").forEach((b) => (b.onclick = async () => {
+    const i = inv.find((x) => x.asset_id === b.dataset.l), f = $(`[data-f="${i.asset_id}"]`).value.trim();
+    try {
+      if (!me.qnt_address || !me.trade_url) throw new Error("Add your trade URL and QNT address in Account first");
+      if (f && !(+f >= 0 && +f <= 1)) throw new Error("Float must be between 0 and 1");
+      must(await sb.from("skin_items").insert({ seller_id: me.id, name: i.name, item: i.item, wear: i.wear, float_value: f ? +f : null, image: i.image,
+        rarity_color: i.rarity_color, inspect_link: i.inspect_link, qnt_price: priceOf($(`[data-q="${i.asset_id}"]`).value) ?? (() => { throw new Error("Set your price"); })() }));
+      toast("Listed ✓"); route();
+    } catch (e) { toast(e.message); }
+  }));
+}
+
 // ---------------------------------------------------------------- orders
 async function orders() {
   if (!needLogin()) return;
-  const list = must(await sb.from("skin_orders").select("*").eq("user_id", me.id).order("created_at", { ascending: false }));
+  const list = must(await sb.from("skin_orders").select("*").or(`user_id.eq.${me.id},seller_id.eq.${me.id}`).order("created_at", { ascending: false }));
   view.innerHTML = `<h1>My orders</h1><div class="card"><ul class="list">${list.map((o) => `<li style="cursor:pointer" onclick="location.hash='#/order/${o.id}'">
-    <div class="grow"><b>#${o.id} · ${o.kind}</b><div class="thumbs" style="margin-top:6px">${[...o.shop_items, ...o.user_items].slice(0, 6).map((i) => `<img src="${esc(i.image)}" alt="">`).join("")}</div></div>
+    <div class="grow"><b>#${o.id} · ${o.seller_id === me.id ? "your sale" : o.kind}</b><div class="thumbs" style="margin-top:6px">${[...o.shop_items, ...o.user_items].slice(0, 6).map((i) => `<img src="${esc(i.image)}" alt="">`).join("")}</div></div>
     <div class="r"><span class="status ${o.status}">${STATUS[o.status]}</span><div class="faint" style="font-size:13px;margin-top:4px">${qnt(Math.abs(o.qnt_due))} QNT ${o.qnt_due > 0 ? "to pay" : o.qnt_due < 0 ? "to receive" : ""}</div></div></li>`).join("") || `<li class="muted">No orders yet.</li>`}</ul></div>`;
 }
 
@@ -225,6 +265,40 @@ async function orderView(id) {
       <div class="row between" style="margin-top:12px"><span class="muted">${o.qnt_due > 0 ? "You pay" : o.qnt_due < 0 ? "You receive" : "Even trade"}</span><span class="big-total">${qnt(Math.abs(o.qnt_due))} QNT</span></div></div>
     <div class="card stack" id="next"></div></div>`;
   const next = $("#next");
+  // Marketplace orders (a user is the seller): escrow flow.
+  if (o.seller_id && o.status !== "awaiting_payment" && o.status !== "cancelled") {
+    const isSeller = o.seller_id === me.id;
+    const step = async (s, b) => { try { busy(b, true); must(await sb.rpc("skin_order_step", { p_id: o.id, p_step: s })); route(); } catch (e) { busy(b, false); toast(e.message, 5000); } };
+    const until = o.payout_after ? new Date(o.payout_after) : null;
+    if (isSeller) {
+      if (o.status === "paid") {
+        next.innerHTML = `<h2>Send the skin to the buyer</h2><p class="muted" style="margin:0">The buyer paid ${qnt(o.qnt_due)} QNT into escrow. Open a Steam trade offer to them with exactly the skin above, and put “Order #${o.id}” in the message.</p>
+          <button class="btn block" id="tu">Open trade with the buyer</button><button class="btn ghost block" id="sent">I sent the trade offer</button>`;
+        $("#tu").onclick = async () => { const url = must(await sb.rpc("skin_buyer_trade_url", { p_order: o.id })); if (url) window.open(url, "_blank", "noopener"); else toast("The buyer hasn't set a trade URL"); };
+        $("#sent").onclick = (e) => step("sent", e.target);
+      } else if (o.status === "trade_sent") next.innerHTML = `<h2>Waiting for the buyer</h2><p class="muted" style="margin:0">Once they accept and confirm, the 8-day hold starts.</p>`;
+      else if (o.status === "in_escrow") next.innerHTML = `<h2>Delivered ✓</h2><p class="muted" style="margin:0">You'll be paid ${qnt(o.qnt_due)} QNT to your address after <b>${until.toLocaleString()}</b> (Steam's trade-reversal window). Reversing the trade gets your account banned and the buyer refunded.</p>`;
+      else if (o.status === "done") next.innerHTML = `<h2>Paid ✓</h2>${o.payout_txid ? `<p class="muted mono">${esc(o.payout_txid)}</p>` : ""}`;
+      else next.innerHTML = `<p class="muted">${esc(STATUS[o.status])}</p>`;
+    } else {
+      if (o.status === "paid" || o.status === "trade_sent") {
+        next.innerHTML = `<h2>${o.status === "paid" ? "Waiting for the seller" : "Check Steam"}</h2>
+          <p class="muted" style="margin:0">The seller sends you a Steam trade offer mentioning Order #${o.id}. Accept it, then confirm here. Your QNT stays in escrow until then.</p>
+          <a class="btn ghost block" href="https://steamcommunity.com/my/tradeoffers" target="_blank" rel="noopener">Open my trade offers</a>
+          <button class="btn block" id="rcv">I received the skin</button>`;
+        $("#rcv").onclick = (e) => step("received", e.target);
+      } else if (o.status === "in_escrow") {
+        next.innerHTML = `<h2>Enjoy your skin ✓</h2><p class="muted" style="margin:0">If the seller reverses the trade before ${until.toLocaleString()}, report it: you get refunded and they get banned.</p>
+          <button class="btn line block" id="rev">The seller reversed the trade</button>`;
+        $("#rev").onclick = (e) => { if (confirm("Report that the seller reversed this trade?")) step("reversed", e.target); };
+      } else if (o.status === "reversed") next.innerHTML = `<h2>Reported</h2><p class="muted" style="margin:0">We're checking it; your QNT will be refunded.</p>`;
+      else if (o.status === "refunded") next.innerHTML = `<h2>Refunded</h2>${o.payout_txid ? `<p class="muted mono">${esc(o.payout_txid)}</p>` : ""}`;
+      else next.innerHTML = `<h2>All done ✓</h2>`;
+    }
+    const ch = sb.channel("o" + o.id).on("postgres_changes", { event: "UPDATE", schema: "public", table: "skin_orders", filter: `id=eq.${o.id}` },
+      () => { sb.removeChannel(ch); if (location.hash === "#/order/" + o.id) route(); }).subscribe();
+    return;
+  }
   if (o.status === "awaiting_payment") {
     next.innerHTML = `<h2>Pay ${qnt(o.qnt_due)} QNT</h2>
       <p class="muted" style="margin:0">Pay from your Quant wallet in one tap, or send exactly this amount from any Quant wallet and paste the transaction ID. Unpaid orders are cancelled after 30 minutes.</p>
@@ -369,9 +443,9 @@ async function admin(tab = "orders") {
 }
 async function adminOrders(el) {
   await sb.rpc("skin_expire_orders"); // Supabase builders are thenables without .catch; errors come back in the result
-  const list = must(await sb.from("skin_orders").select("*, skin_profiles(name, steam_id, trade_url, qnt_address)").not("status", "in", "(done,cancelled)").order("created_at"));
+  const list = must(await sb.from("skin_orders").select("*, skin_profiles!skin_orders_user_id_fkey(name, steam_id, trade_url, qnt_address), seller:skin_profiles!skin_orders_seller_id_fkey(id, name, qnt_address)").not("status", "in", "(done,cancelled)").order("created_at"));
   el.innerHTML = `<p class="muted">${list.length} open orders. This page beeps and notifies you when an order arrives or gets paid — keep it open.</p>` +
-    list.map((o) => `<div class="card stack" style="margin-bottom:12px"><div class="row between wrap"><b>#${o.id} · ${o.kind} · ${esc(o.skin_profiles?.name)}</b><span class="status ${o.status}">${STATUS[o.status]}</span></div>
+    list.map((o) => `<div class="card stack" style="margin-bottom:12px"><div class="row between wrap"><b>#${o.id} · ${o.kind} · ${esc(o.skin_profiles?.name)}${o.seller ? " ← seller " + esc(o.seller.name) : ""}</b><span class="status ${o.status}">${STATUS[o.status]}</span></div>
       ${o.shop_items.length ? `<div><span class="muted">Send them:</span> ${o.shop_items.map((i) => esc(i.name) + (i.float ? ` (${(+i.float).toFixed(4)})` : "")).join(", ")}</div>` : ""}
       ${o.user_items.length ? `<div><span class="muted">Receive from them:</span> ${o.user_items.map((i) => esc(i.name)).join(", ")}</div>` : ""}
       <div>${o.qnt_due > 0 ? `They pay <b>${qnt(o.qnt_due)} QNT</b>${o.pay_txid ? ` · tx <span class="mono">${esc(o.pay_txid.slice(0, 16))}…</span>` : ""}` : o.qnt_due < 0 ? `You pay them <b>${qnt(-o.qnt_due)} QNT</b> → <span class="mono">${esc(o.skin_profiles?.qnt_address || "no address set")}</span>` : "Even swap"}</div>
@@ -379,6 +453,8 @@ async function adminOrders(el) {
         <a class="btn sm" href="${esc(o.skin_profiles?.trade_url)}" target="_blank" rel="noopener">Open trade with them</a>
         ${["paid", "awaiting_skins"].includes(o.status) ? `<button class="btn ghost sm" data-a="sent" data-id="${o.id}">Mark trade sent</button>` : ""}
         ${o.qnt_due < 0 && !o.payout_txid ? `<button class="btn ghost sm" data-a="payout" data-id="${o.id}">Pay ${qnt(-o.qnt_due)} QNT</button>` : ""}
+        ${o.status === "in_escrow" ? (new Date(o.payout_after) <= Date.now() ? `<button class="btn sm" data-a="payseller" data-id="${o.id}">Pay seller ${qnt(o.qnt_due)} QNT</button>` : `<span class="pill">payout ${new Date(o.payout_after).toLocaleDateString()}</span>`) : ""}
+        ${o.status === "reversed" ? `<button class="btn danger sm" data-a="refund" data-id="${o.id}">Refund buyer + ban seller</button>` : ""}
         <button class="btn ghost sm" data-a="done" data-id="${o.id}">Mark done</button>
         <button class="btn line sm" data-a="cancel" data-id="${o.id}">Cancel</button></div>
       <p class="faint" style="margin:0;font-size:13px">Put “Order #${o.id}” in the Steam trade message.</p></div>`).join("");
@@ -391,6 +467,20 @@ async function adminOrders(el) {
         must(await sb.from("skin_orders").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", o.id));
         const ids = o.shop_items.map((i) => i.id);
         if (ids.length) must(await sb.from("skin_items").update({ status: "sold" }).in("id", ids));
+      }
+      if (b.dataset.a === "payseller" || b.dataset.a === "refund") {
+        const refund = b.dataset.a === "refund";
+        const addr = refund ? o.skin_profiles?.qnt_address : o.seller?.qnt_address;
+        const to = Q.decodeAddress(HRP, addr || "");
+        if (!to) throw new Error(`The ${refund ? "buyer" : "seller"} hasn't set a valid QNT address`);
+        const api = await nodeApi(), w = await getWallet();
+        await w.refresh(api);
+        const built = w.build({ outs: [{ value: Q.parseUnits(String(o.qnt_due)), asset: null, addr: to }], ops: [] });
+        if (!confirm(`${refund ? "Refund" : "Pay"} ${qnt(o.qnt_due)} QNT (+${Q.formatUnits(built.fee)} fee) to ${refund ? o.skin_profiles.name : o.seller.name}?`)) return;
+        const id = await api.call("sendrawtransaction", [built.hex]);
+        must(await sb.from("skin_orders").update({ payout_txid: id, status: refund ? "refunded" : "done", updated_at: new Date().toISOString() }).eq("id", o.id));
+        if (refund) must(await sb.rpc("skin_ban", { p_user: o.seller_id, p_days: null, p_reason: `Reversed the trade for order #${o.id}` }));
+        toast(refund ? "Refunded ✓ and seller banned" : "Seller paid ✓");
       }
       if (b.dataset.a === "payout") {
         const to = Q.decodeAddress(HRP, o.skin_profiles?.qnt_address || "");
