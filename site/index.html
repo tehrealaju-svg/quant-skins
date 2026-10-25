@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quant Skins</title>
+<meta name="description" content="Buy, sell and swap CS2 skins for Quant (QNT). Prices follow float.">
+<meta name="theme-color" content="#ff5a4e">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/skins.css">
+<script>try { const t = localStorage.getItem("quant.theme"); if (t && t !== "system") document.documentElement.dataset.theme = t; } catch {}</script>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="#/"><span class="logo-mark">S</span>Quant Skins</a>
+    <nav class="nav">
+      <a href="#/" data-nav="home">Market</a>
+      <a href="#/trade" data-nav="trade">Trade</a>
+      <a href="#/orders" data-nav="orders">My orders</a>
+      <a href="#/admin" data-nav="admin" class="hidden" id="nav-admin">Admin</a>
+    </nav>
+    <div class="grow"></div>
+    <div id="who"></div>
+  </div>
+</header>
+<main id="view"></main>
+<footer class="foot">
+  <span>Prices from csgoskins.gg, adjusted for float. Paid in QNT.</span>
+  <a href="https://tehrealaju-svg.github.io/quant-web/">Quant wallet</a>
+</footer>
+<nav class="tabs">
+  <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Market</a>
+  <a href="#/trade" data-nav="trade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>Trade</a>
+  <a href="#/orders" data-nav="orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></svg>Orders</a>
+  <a href="#/account" data-nav="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Account</a>
+</nav>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
