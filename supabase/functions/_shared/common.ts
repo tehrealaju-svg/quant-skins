@@ -49,9 +49,15 @@ export async function fetchPrices(db: SupabaseClient, item: string) {
   if (/^StatTrak/.test(item)) return [];
   const r = await fetch(`https://csgoskins.gg/items/${slug(item)}`, { headers: { "User-Agent": "Mozilla/5.0 QuantSkins price check" } });
   if (!r.ok) return [];
-  const rows = parsePrices(await r.text());
+  const html = await r.text();
+  let rows = parsePrices(html);
+  if (!rows.length) {
+    // Items without wear (agents, music kits, stickers, cases): one price in the page's product data.
+    const m = html.match(/"lowPrice"\s*:\s*"?([\d.]+)"?/);
+    if (m) rows = [{ wear: "", min: NaN, max: NaN, usd: +m[1] }];
+  }
   if (rows.length) {
-    await db.from("skin_prices").upsert(rows.map((x) => ({ item, wear: x.wear, wear_min: x.min, wear_max: x.max, usd: x.usd, fetched_at: new Date().toISOString() })));
+    await db.from("skin_prices").upsert(rows.map((x) => ({ item, wear: x.wear, wear_min: isNaN(x.min) ? null : x.min, wear_max: isNaN(x.max) ? null : x.max, usd: x.usd, fetched_at: new Date().toISOString() })));
   }
   return rows;
 }
